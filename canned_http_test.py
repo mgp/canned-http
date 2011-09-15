@@ -102,7 +102,6 @@ class TestParseYaml(unittest.TestCase):
     exchange = connection._exchanges[0]
 
 
-@unittest.skip('')
 class TestDirector(unittest.TestCase):
   def test_empty_script(self):
     script = canned_http.Script()

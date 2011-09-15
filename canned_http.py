@@ -96,7 +96,7 @@ class Director:
   If the script is not followed, a DirectorException is raised.
   """
 
-  class _DirectorEvent:
+  class _Event:
     """An event that the server expects to generate as part of the script.
     
     This class is simply to make verifying a Script easier.
@@ -107,19 +107,21 @@ class Director:
 
     @staticmethod
     def connection_opened_event(connection_index):
-      return _DirectorEvent(_DirectorEvent._CONNECTION_OPENED, connection_index)
+      return Director._Event(
+          Director._Event._CONNECTION_OPENED, connection_index)
 
     @staticmethod
     def connection_closed_event(connection_index):
-      return _DirectorEvent(_DirectorEvent._CONNECTION_CLOSED, connection_index)
+      return Director._Event(
+          Director._Event._CONNECTION_CLOSED, connection_index)
 
     @staticmethod
     def exchange_event(connection_index, exchange_index, exchange):
-      return _DirectorEvent(
-          _DirectorEvent._GOT_REQUEST, connection_index, exchange_index, exchange)
+      return Director._Event(
+          Director._Event._GOT_REQUEST, connection_index, exchange_index, exchange)
 
     def __init__(self, event_type, connection_index, exchange_index=None, exchange=None):
-      self._event_type = event_type
+      self._type = event_type
       self._connection_index = connection_index
       if exchange_index is not None:
         self._exchange_index = exchange_index
@@ -133,19 +135,19 @@ class Director:
     # Convert the given Script into a sequence of DirectorEvent instances.
     events = []
     for connection_index, connection in enumerate(script._connections, 1):
-      self._events.append(
-          _DirectorEvent.connection_opened_event(connection_index))
+      events.append(
+          Director._Event.connection_opened_event(connection_index))
       for exchange_index, exchange in enumerate(connection._exchanges, 1):
-        self._events.append(
-            _DirectorEvent(connection_index, exchange_index, exchange))
-      self._events.append(
-          _DirectorEvent.connection_closed_event(connection_index))
+        events.append(
+            Director._Event.exchange_event(connection_index, exchange_index, exchange))
+      events.append(
+          Director._Event.connection_closed_event(connection_index))
     self._events_iter = iter(events)
 
   def _ready_next_event(self):
     if not self._next_event_ready:
       try:
-        self._next_event = next(events_iter)
+        self._next_event = next(self._events_iter)
       except StopIteration:
         # The last event has been reached.
         self._next_event = None
@@ -166,13 +168,13 @@ class Director:
     """Called by the web server when the client closes the connection.""" 
 
     self._ready_next_event()
-    if self._next_event.type == _DirectorEvent._GOT_REQUEST:
+    if self._next_event._type == Director._Event._GOT_REQUEST:
       raise DirectorException(
           'Client closed the connection %s instead of performing exchange %s' %
           (self._next_event._connection_index, self._next_event._exchange_index))
     self._finish_current_event()
 
-  def got_request(method, url, body=None):
+  def got_request(self, method, url, body=None):
     """Called by the web server when the client sends an HTTP request.
     
     Returns a tuple containing the delay and the reply to send back. If the
@@ -180,30 +182,28 @@ class Director:
     the client to close the connection.
     """
 
-    self._ready_next_request()
-    if self._next_event.type == _DirectorEvent._CONNECTION_CLOSED:
+    self._ready_next_event()
+    if self._next_event._type == Director._Event._CONNECTION_CLOSED:
       raise DirectorException(
           'Client sent request with method %s and URL %s instead of closing connection %s' %
           (method, url, self._next_event._connection_index))
 
-    if method != self._event._method:
+    exchange = self._next_event._exchange
+    if method != exchange._method:
       raise DirectorException(
           "Expected 'method' value %s, received %s for connection %s, exchange %s" %
-          (self._event._method, method, self._event._connection_index,
-           self._event._exchange_index))
-    if url != self._event._url:
+          (exchange._method, method, exchange._connection_index, exchange._exchange_index))
+    if url != exchange._url:
       raise DirectorException(
           "Expected 'url' value %s, received %s for connection %s, exchange %s" %
-          (self._event._url, url, self._event._connection_index,
-           self._event._exchange_index))
-    if body != self._event._body:
+          (exchange._url, url, exchange._connection_index, exchange._exchange_index))
+    if body != exchange._body:
       raise DirectorException(
           "Expected 'body' value %s, received %s for connection %s, exchange %s" %
-          (self._event._body, body, self._event._connection_index,
-           self._event._exchange_index))
+          (exchange._body, body, exchange._connection_index, exchange._exchange_index))
 
     self._finish_current_event()
-    return (self._event.delay, self._event.reply)
+    return (exchange._delay, exchange._reply)
 
   def is_done(self):
     """Returns whether the script has been fully run by the client."""
