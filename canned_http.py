@@ -52,35 +52,55 @@ class Exchange:
   well-behaved clients should also timeout and disconnect.)
   """
 
-  @staticmethod
-  def script_reply(method, url, reply, body=None, delay=0):
-    """Returns an Exchange instance where the server sends the given reply after
-    the given delay in milliseconds."""
-    return Exchange(method, url, body, delay, reply)
+  class Request:
+    def __init__(self, method, url, headers=None, body=None):
+      self._method = method
+      self._url = url
+      self._headers = headers or {}
+      self._body = body
 
-  @staticmethod
-  def script_no_reply(method, url, body=None):
-    """Returns an Exchange instance where the server sends no reply and so the
-    client must disconnect.
-    """
-    return Exchange(method, url, body)
+    def __repr__(self):
+      request_parts = [('method', self._method), ('url', self._url)]
+      if self._headers:
+        request_parts.append(('headers', self._headers))
+      if self._body:
+        request_parts.append(('body', self._body))
+      request_str = ', '.join(('%s: %s' % (key, value) for (key, value) in request_parts))
+      return '{%s}' % request_str
 
-  def __init__(self, method, url, body, delay=0, reply=None):
-    self._method = method
-    self._url = url
-    self._body = body
-    self._delay = delay
-    self._reply = reply
+  class Response:
+    @staticmethod
+    def response_with_body(status_code, content_type, body, headers=None, delay=0):
+      return Exchange.Response(status_code, content_type, delay, headers, body=body)
+
+    @staticmethod
+    def response_from_file(status_code, content_type, body_filename, headers=None,
+        delay=0):
+      return Exchange.Response(status_code, content_type, delay, headers,
+          body_filename=body_filename)
+
+    def __init__(self, status_code, content_type, delay, headers=None,
+        body=None, body_filename=None):
+      self._status_code = status_code
+      self._content_type = content_type
+      self._delay = delay
+      self._headers = headers
+      self._body = body
+      self._body_filename = body_filename
+
+    def __repr__(self):
+      # TODO
+      return ''
+
+  def __init__(self, request, response=None):
+    self._request = request
+    self._response = response
 
   def __repr__(self):
-    request_parts = [('method', self._method), ('url', self._url)]
-    if self._body:
-      request_parts.append(('body', self._body))
-    request = ', '.join(('%s=%s' % (key, value) for (key, value) in request_parts))
-    if not self._reply:
-      return '{request={%s}, no_reply}' % request
+    if self._response:
+      return '{request=%s, response=%s}' % (repr(self._request), repr(self._response))
     else:
-      return '{request={%s}, delay=%s, reply=%s}' % (request, self._delay, self._reply)
+      return '{request=%s}' % repr(self._request)
 
 
 class DirectorException(Exception):
@@ -241,7 +261,6 @@ def parse_yaml(raw_yaml):
   """Returns a Script instance parsed from the given Python object containing YAML.
   """
 
-  print 'raw_yaml=%s' % raw_yaml
   connections = []
   for i, connection_yaml in enumerate(raw_yaml, 1):
     exchanges = []
@@ -251,33 +270,70 @@ def parse_yaml(raw_yaml):
         raise YamlParseError(
             "Reply missing for exchange preceding connection %s, exchange %s" % (i, j))
 
+      request_yaml = exchange_yaml.get('request', None)
+      if request_yaml is None:
+        raise YamlParseError(
+            "Missing 'request' key for connection %s, exchange %s" % (i, j))
       # Get and validate the required method.
-      method = exchange_yaml.get('method', None)
+      method = request_yaml.get('method', None)
       if method is None:
         raise YamlParseError(
-            "Missing 'method' key for connection %s, exchange %s" % (i, j))
+            "Missing 'method' key for request in connection %s, exchange %s" % (i, j))
       method_upper = method.upper()
       if method_upper not in ('GET', 'PUT', 'POST', 'DELETE'):
         raise YamlParseError(
-            "Invalid method '%s' for connection %s, exchange %s" % (method, i, j))
-      # Get and validate the required URL.
-      url = exchange_yaml.get('url', None)
+            "Invalid method '%s' for request in connection %s, exchange %s" % (method, i, j))
+      # Get the required URL.
+      url = request_yaml.get('url', None)
       if not url:
         raise YamlParseError(
-            "Missing 'url' key for connection %s, exchange %s" % (i, j))
-      # Get the optional body.
-      body = exchange_yaml.get('body', None)
+            "Missing 'url' key for request in connection %s, exchange %s" % (i, j))
+      # Get the optional headers and body.
+      headers = request_yaml.get('headers', {})
+      body = request_yaml.get('body', None)
+      # Create the request.
+      request = Exchange.Request(method, url, headers, body)
 
-      # Get the optional reply.
-      reply = exchange_yaml.get('reply')
-      if reply:
-        # Send the reply after the given delay in milliseconds.
-        delay = exchange_yaml.get('delay', 0)
-        exchange = Exchange.script_reply(method_upper, url, reply, body, delay)
+      response_yaml = exchange_yaml.get('response', None)
+      if response_yaml:
+        # Get the required status code.
+        status_code = response_yaml.get('status_code', None)
+        if not status_code:
+          raise YamlParseError(
+              "Missing 'status_code' key for response in connection %s, exchange %s" % (i, j))
+        # Get the required content type.
+        content_type = response_yaml.get('content_type', None)
+        if not content_type:
+          raise YamlParseError(
+              "Missing 'content_type' key for response in connection %s, exchange %s" % (i, j))
+        # Get the optional headers and delay.
+        headers = response_yaml.get('headers', {})
+        delay = response_yaml.get('delay', 0)
+
+        body = response_yaml.get('body', None)
+        body_filename = response_yaml.get('body_filename', None)
+        if body and body_filename:
+          raise YamlParseError(
+              "Found both 'body' and 'body_filename' keys for response in "
+              "connection %s, exchange %s" % (i, j))
+        elif body:
+          # Create the response with the given body.
+          response = Exchange.Response.response_with_body(
+              status_code, content_type, body, headers, delay)
+        elif body_filename:
+          # Create the response with a body from the given filename.
+          response = Exchange.Response.response_from_file(
+              status_code, content_type, body_filename, headers, delay)
+        else:
+          raise YamlParseError(
+              "Missing both 'body' and 'body_filename' keys for response in "
+              "connection %s, exchange %s" % (i, j))
       else:
-        # The client must close the connection.
-        exchange = Exchange.script_no_reply(method_upper, url, body)
+        # There is no response for this request.
         reached_no_reply = True
+        response = None
+
+      exchange = Exchange(request, response)
       exchanges.append(exchange)
 
     connection = Connection(exchanges)

@@ -3,54 +3,108 @@ import unittest
 import canned_http
 
 class TestParseYaml(unittest.TestCase):
-  def _assert_exchange(self, exchange, method, url, body=None, reply=None, delay=0):
-    # Assert that the required values are correct.
-    self.assertEqual(method, exchange._method)
-    self.assertEqual(url, exchange._url)
-    # Assert that the optional values are correct.
-    try:
-      exchange_body = exchange._body
-      self.assertEqual(body, exchange_body)
-    except AttributeError:
-      self.assertIsNone(body)
-    try:
-      exchange_reply = exchange._reply
-      exchange_delay = exchange._delay
-      self.assertEqual(reply, exchange_reply)
-      self.assertEqual(delay, exchange_delay)
-    except AttributeError:
-      self.assertIsNone(reply)
+  def _assert_request(self, exchange, method, url, headers={}, body=None):
+    request = exchange._request
+    self.assertEqual(method, request._method)
+    self.assertEqual(url, request._url)
+    self.assertDictEqual(headers, request._headers)
+    self.assertEqual(body, request._body)
+
+  def _assert_no_response(self, exchange):
+    self.assertIsNone(exchange._response)
+
+  def _assert_response(self, exchange, status_code, content_type, headers={}, delay=0,
+      body=None, body_filename=None):
+    response = exchange._response
+    self.assertEqual(status_code, response._status_code)
+    self.assertEqual(content_type, response._content_type)
+    self.assertDictEqual(headers, response._headers)
+    self.assertEqual(delay, response._delay)
+    self.assertEqual(body, response._body)
+    self.assertEqual(body_filename, response._body_filename)
 
   def test_invalid_script(self):
-    # Raise exception if method is missing.
+    # Raise exception if method is missing in request.
     raw_yaml = """
-        - - url: /foo.html
-            reply: <html><body></body></html>
+        - - request:
+              url: /foo.html
+            response:
+              status_code: 200
+              content_type: html
+              body: <html><body></body></html>
         """
     with self.assertRaises(canned_http.YamlParseError):
       canned_http.parse_yaml_from_string(raw_yaml)
-    # Raise exception if method is invalid.
+    # Raise exception if method is invalid in request.
     raw_yaml = """
-        - - method: PONY
-            url: /foo.html
-            reply: <html><body></body></html>
+        - - request:
+              method: PONY
+              url: /foo.html
+            response:
+              status_code: 200
+              content_type: html
+              body: <html><body></body></html>
         """
     with self.assertRaises(canned_http.YamlParseError):
       canned_http.parse_yaml_from_string(raw_yaml)
-    # Raise exception if url is missing.
+    # Raise exception if url is missing in request.
     raw_yaml = """
-        - - method: GET
-            reply: <html><body></body></html>
+        - - request:
+              method: GET
+            response:
+              status_code: 200
+              content_type: html
+              body: <html><body></body></html>
+        """
+    with self.assertRaises(canned_http.YamlParseError):
+      canned_http.parse_yaml_from_string(raw_yaml)
+    # Raise exception if status code is missing in response.
+    raw_yaml = """
+        - - request:
+              method: GET
+              url: /foo.html
+            response:
+              content_type: html
+              body: <html><body></body></html>
+        """
+    with self.assertRaises(canned_http.YamlParseError):
+      canned_http.parse_yaml_from_string(raw_yaml)
+    # Raise exception if content type is missing in response.
+    raw_yaml = """
+        - - request:
+              method: GET
+              url: /foo.html
+            response:
+              status_code: 200
+              body: <html><body></body></html>
+        """
+    with self.assertRaises(canned_http.YamlParseError):
+      canned_http.parse_yaml_from_string(raw_yaml)
+    # Raise exception if both body and filename are present in response.
+    raw_yaml = """
+        - - request:
+              method: GET
+              url: /foo.html
+            response:
+              status_code: 200
+              content_type: html
+              body: <html><body></body></html>
+              body_filename: favicon.ico
         """
     with self.assertRaises(canned_http.YamlParseError):
       canned_http.parse_yaml_from_string(raw_yaml)
     # Raise exception if reply is missing for exchange that is not last.
     raw_yaml = """
-        - - method: GET
-            url: /foo1.html
-          - method: GET
-            url: /foo2.html
-            reply: <html><body></body></html>
+        - - request:
+              method: GET
+              url: /foo1.html
+          - request:
+              method: GET
+              url: /foo2.html
+            response:
+              status_code: 200
+              content_type: html
+              body: <html><body></body></html>
         """
     with self.assertRaises(canned_http.YamlParseError):
       canned_http.parse_yaml_from_string(raw_yaml)
@@ -59,18 +113,25 @@ class TestParseYaml(unittest.TestCase):
     # Capitalization of method should not matter.
     method = 'PuT'
     url = '/foo.html'
-    reply = '<html><body></body></html>'
+    status_code = 200
+    content_type = 'html'
+    response_body = '<html><body></body></html>'
     raw_yaml = """
-        - - method: %s
-            url: %s
-            reply: %s
-        """ % (method, url, reply)
+        - - request:
+              method: %s
+              url: %s
+            response:
+              status_code: %s
+              content_type: %s
+              body: %s
+        """ % (method, url, status_code, content_type, response_body)
     script = canned_http.parse_yaml_from_string(raw_yaml)
     self.assertEqual(1, len(script._connections))
     connection = script._connections[0]
     self.assertEqual(1, len(connection._exchanges))
     exchange = connection._exchanges[0]
-    self._assert_exchange(exchange, method.upper(), url, reply=reply)
+    self._assert_request(exchange, method, url)
+    self._assert_response(exchange, status_code, content_type, body=response_body)
 
   def test_empty_script(self):
     raw_yaml = """
@@ -80,28 +141,49 @@ class TestParseYaml(unittest.TestCase):
 
   def test_valid_script(self):
     raw_yaml = """
-        - - method: GET
-            url: /foo1.html
-            reply: reply1
-          - method: POST
-            body: body1
-            url: /foo2.html
-        - - method: DELETE
-            url: /foo3.html
-            reply: reply3
-            delay: 1000
+        - - request:
+              method: GET
+              url: /foo1.html
+            response:
+              status_code: 200
+              content_type: html
+              body: response_body1 
+          - request:
+              method: POST
+              url: /foo2.html
+              body: request_body2
+        - - request:
+              method: DELETE
+              url: /foo3.html
+            response:
+              status_code: 200
+              content_type: html
+              delay: 1000
+              body_filename: response_body_filename3
         """
     script = canned_http.parse_yaml_from_string(raw_yaml)
     self.assertEqual(2, len(script._connections))
+
     # Verify the two exchanges of the first connection.
     connection = script._connections[0]
     self.assertEqual(2, len(connection._exchanges))
+    exchange = connection._exchanges[0]
+    self._assert_request(exchange, 'GET', '/foo1.html')
+    self._assert_response(exchange, 200, 'html', body='response_body1')
+    exchange = connection._exchanges[1]
+    self._assert_request(exchange, 'POST', '/foo2.html', body='request_body2')
+    self._assert_no_response(exchange)
+
     # Verify the one exchange of the second connection.
     connection = script._connections[1]
     self.assertEqual(1, len(connection._exchanges))
     exchange = connection._exchanges[0]
+    self._assert_request(exchange, 'DELETE', '/foo3.html')
+    self._assert_response(exchange, 200, 'html', delay=1000,
+        body_filename='response_body_filename3')
 
 
+@unittest.skip('')
 class TestDirector(unittest.TestCase):
   def test_empty_script(self):
     script = canned_http.Script()
