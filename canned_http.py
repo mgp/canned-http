@@ -85,8 +85,11 @@ class DirectorException(Exception):
   def __init__(self, message):
     self._message = message
 
+  def __str__(self):
+    return repr(self)
+
   def __repr__(self):
-    return message
+    return self._message
 
 
 class Director:
@@ -192,15 +195,18 @@ class Director:
     if method != exchange._method:
       raise DirectorException(
           "Expected 'method' value %s, received %s for connection %s, exchange %s" %
-          (exchange._method, method, exchange._connection_index, exchange._exchange_index))
+          (exchange._method, method, self._next_event._connection_index,
+           self._next_event._exchange_index))
     if url != exchange._url:
       raise DirectorException(
           "Expected 'url' value %s, received %s for connection %s, exchange %s" %
-          (exchange._url, url, exchange._connection_index, exchange._exchange_index))
+          (exchange._url, url, self._next_event._connection_index,
+           self._next_event._exchange_index))
     if body != exchange._body:
       raise DirectorException(
           "Expected 'body' value %s, received %s for connection %s, exchange %s" %
-          (exchange._body, body, exchange._connection_index, exchange._exchange_index))
+          (exchange._body, body, self._next_event._connection_index,
+           self._next_event._exchange_index))
 
     self._finish_current_event()
     return (exchange._delay, exchange._reply)
@@ -219,8 +225,11 @@ class YamlParseError(Exception):
   def __init__(self, message):
     self._message = message
 
+  def __str__(self):
+    return repr(self)
+
   def __repr__(self):
-    return message
+    return self._message
 
 
 def parse_yaml(raw_yaml):

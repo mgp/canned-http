@@ -109,12 +109,12 @@ class TestDirector(unittest.TestCase):
     self.assertTrue(director.is_done())
 
   def test_invalid_events(self):
-    # Raise exception if connection opened after the script ended.
+    # Raise an exception if connection opened after the script ended.
     script = canned_http.Script()
     director = canned_http.Director(script)
     with self.assertRaises(canned_http.DirectorException):
       director.connection_opened()
-    # Raise exception if got request instead of closing the connection.
+    # Raise an exception if got request instead of closing the connection.
     raw_yaml = """
         - - method: GET
             url: /foo1.html
@@ -126,7 +126,7 @@ class TestDirector(unittest.TestCase):
     director.got_request('GET', '/foo1.html')
     with self.assertRaises(canned_http.DirectorException):
       director.got_request('GET', '/foo2.html')
-    # Raise exception if closed connection instead of getting a request.
+    # Raise an exception if closed connection instead of getting a request.
     raw_yaml = """
         - - method: GET
             url: /foo1.html
@@ -141,6 +141,75 @@ class TestDirector(unittest.TestCase):
     director.got_request('GET', '/foo1.html')
     with self.assertRaises(canned_http.DirectorException):
       director.connection_closed()
+
+  def test_invalid_exchanges(self):
+    raw_yaml = """
+        - - method: GET
+            url: /foo1.html
+            reply: reply1
+        """
+    script = canned_http.parse_yaml_from_string(raw_yaml)
+    # Raise an exception if the wrong method is used.
+    director = canned_http.Director(script)
+    director.connection_opened()
+    with self.assertRaises(canned_http.DirectorException):
+      director.got_request('PUT', '/foo1.html')
+    # Raise an exception if the wrong URL is requested.
+    director = canned_http.Director(script)
+    director.connection_opened()
+    with self.assertRaises(canned_http.DirectorException):
+      director.got_request('GET', '/foo2.html')
+    # Raise an exception if a body is provided when it should not.
+    director = canned_http.Director(script)
+    director.connection_opened()
+    with self.assertRaises(canned_http.DirectorException):
+      director.got_request('GET', '/foo1.html', 'body')
+    # Raise an exception if no body is provided when it should be.
+    raw_yaml = """
+        - - method: GET
+            url: /foo1.html
+            body: body1
+            reply: reply1
+        """
+    script = canned_http.parse_yaml_from_string(raw_yaml)
+    director = canned_http.Director(script)
+    director.connection_opened()
+    with self.assertRaises(canned_http.DirectorException):
+      director.got_request('GET', '/foo1.html')
+
+  def test_valid_script(self):
+    raw_yaml = """
+        - - method: GET
+            url: /foo1.html
+            reply: reply1
+            delay: 0
+          - method: POST
+            url: /foo2.html
+            body: body2
+        - - method: DELETE
+            url: /foo3.html
+            body: body3
+            reply: reply3
+            delay: 0
+        """
+    script = canned_http.parse_yaml_from_string(raw_yaml)
+    director = canned_http.Director(script)
+
+    # Verify the two exchanges of the first connection.
+    director.connection_opened()
+    delay, reply = director.got_request('GET', '/foo1.html')
+    self.assertEqual(0, delay)
+    self.assertEqual(reply, 'reply1')
+    delay, reply = director.got_request('POST', '/foo2.html', 'body2')
+    self.assertIsNone(reply)
+    director.connection_closed()
+
+    # Verify the one exchange of the second connection.
+    director.connection_opened()
+    delay, reply = director.got_request('DELETE', '/foo3.html', 'body3')
+    self.assertEqual(0, delay)
+    self.assertEqual(reply, 'reply3')
+    director.connection_closed()
 
 if __name__ == '__main__':
   unittest.main()
