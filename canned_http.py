@@ -3,6 +3,11 @@
 Author: Michael Parker (michael.g.parker@gmail.com)
 """
 
+import argparse
+import BaseHTTPServer
+import SocketServer
+import time
+
 import yaml
 
 
@@ -236,6 +241,7 @@ def parse_yaml(raw_yaml):
   """Returns a Script instance parsed from the given Python object containing YAML.
   """
 
+  print 'raw_yaml=%s' % raw_yaml
   connections = []
   for i, connection_yaml in enumerate(raw_yaml, 1):
     exchanges = []
@@ -299,14 +305,62 @@ def parse_yaml_from_file(yaml_filename):
   return parse_yaml_from_string(yaml_string)
 
 
+class DirectorRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+  @staticmethod
+  def set_director(director):
+    DirectorRequestHandler._director = director
+
+  def handle_request(self):
+    method = self.command
+    url = self.path
+    content_length = self.headers.get('Content-Length', None)
+    if content_length:
+      content_length = int(content_length)
+      body = self.rfile.read(content_length)
+      if not body:
+        body = None
+    else:
+      body = None
+
+    delay, reply = DirectorRequestHandler._director.got_request(method, url, body)
+    if reply:
+      time.sleep(delay)
+      self.send_header('Content-type:', 'text/html; charset=utf-8')
+      self.send_response(200, reply)
+
+  def do_GET(self):
+    self.handle_request()
+
+  def do_POST(self):
+    self.handle_request()
+
+  def do_PUT(self):
+    self.handle_request()
+
+  def do_DELETE(self):
+    self.handle_request()
+
+  def handle(self):
+    DirectorRequestHandler._director.connection_opened()
+    BaseHTTPServer.BaseHTTPRequestHandler.handle(self)
+    DirectorRequestHandler._director.connection_closed()
+
+
 if __name__ == '__main__':
   arg_parser = argparse.ArgumentParser()
-  arg_parser.add_argument('--port', type=int, required=False,
+  arg_parser.add_argument('--port', type=int, required=False, default=8080,
       help='Port the web server should run on')
   arg_parser.add_argument('--yaml_filename', type=str, required=True,
       help='YAML input file for expected requests and replies')
+  arg_parser.add_argument('--quit_on_failure', type=bool, required=False, default=True,
+      help='Quit if the client does not follow the script')
   parsed_args = arg_parser.parse_args()
 
+  # Create the script and a Director instance from the script.
   script = parse_yaml_from_file(parsed_args.yaml_filename)
-  # TODO: Run the script.
+  director = Director(script)
+  DirectorRequestHandler.set_director(director)
+  # Begin serving on the specified port.
+  server = SocketServer.TCPServer(("", parsed_args.port), DirectorRequestHandler)
+  server.serve_forever()
 

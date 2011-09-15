@@ -1,0 +1,7 @@
+- - method: GET
+    url: /page1.html
+    reply: <html><body><h1>Page 1</h1><a href="/page2.html">Go to page 2</a></body></html>
+- - method: GET
+    url: /page2.html
+    reply: <html><body><h2>Page 2</h2></body></html>
+
