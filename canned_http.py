@@ -51,7 +51,7 @@ class Exchange:
   def script_reply(method, url, reply, body=None, delay=0):
     """Returns an Exchange instance where the server sends the given reply after
     the given delay in milliseconds."""
-    return Exchange(method, url, body, delay)
+    return Exchange(method, url, body, delay, reply)
 
   @staticmethod
   def script_no_reply(method, url, body=None):
@@ -60,7 +60,7 @@ class Exchange:
     """
     return Exchange(method, url, body)
 
-  def __init__(self, method, url, body=None, delay=0, reply=None):
+  def __init__(self, method, url, body, delay=0, reply=None):
     self._method = method
     self._url = url
     self._body = body
@@ -74,7 +74,7 @@ class Exchange:
     request = ', '.join(('%s=%s' % (key, value) for (key, value) in request_parts))
     if not self._reply:
       return '{request={%s}, no_reply}' % request
-    else
+    else:
       return '{request={%s}, delay=%s, reply=%s}' % (request, self._delay, self._reply)
 
 
@@ -137,7 +137,7 @@ class Director:
           _DirectorEvent.connection_opened_event(connection_index))
       for exchange_index, exchange in enumerate(connection._exchanges, 1):
         self._events.append(
-            _DirectorEvent(connection_index, exchange_index, exchange)
+            _DirectorEvent(connection_index, exchange_index, exchange))
       self._events.append(
           _DirectorEvent.connection_closed_event(connection_index))
     self._events_iter = iter(events)
@@ -172,7 +172,7 @@ class Director:
           (self._next_event._connection_index, self._next_event._exchange_index))
     self._finish_current_event()
 
-  def got_request(method, url, body):
+  def got_request(method, url, body=None):
     """Called by the web server when the client sends an HTTP request.
     
     Returns a tuple containing the delay and the reply to send back. If the
@@ -224,7 +224,7 @@ class YamlParseError(Exception):
 
 
 def parse_yaml(raw_yaml):
-  """Returns a Script instance parsed from the given string containing YAML.
+  """Returns a Script instance parsed from the given Python object containing YAML.
   """
 
   connections = []
@@ -232,6 +232,10 @@ def parse_yaml(raw_yaml):
     exchanges = []
     reached_no_reply = False
     for j, exchange_yaml in enumerate(connection_yaml, 1):
+      if reached_no_reply:
+        raise YamlParseError(
+            "Reply missing for exchange preceding connection %s, exchange %s" % (i, j))
+
       # Get and validate the required method.
       method = exchange_yaml.get('method', None)
       if method is None:
@@ -240,7 +244,7 @@ def parse_yaml(raw_yaml):
       method_upper = method.upper()
       if method_upper not in ('GET', 'PUT', 'POST', 'DELETE'):
         raise YamlParseError(
-            "Invalid method '%s' for connection %s, exchange %s" % (i, j))
+            "Invalid method '%s' for connection %s, exchange %s" % (method, i, j))
       # Get and validate the required URL.
       url = exchange_yaml.get('url', None)
       if not url:
@@ -254,9 +258,10 @@ def parse_yaml(raw_yaml):
       if reply:
         # Send the reply after the given delay in milliseconds.
         delay = exchange_yaml.get('delay', 0)
+        exchange = Exchange.script_reply(method_upper, url, reply, body, delay)
       else:
         # The client must close the connection.
-        exchange = Exchange.script_no_reply(method, url, body)
+        exchange = Exchange.script_no_reply(method_upper, url, body)
         reached_no_reply = True
       exchanges.append(exchange)
 
@@ -265,15 +270,24 @@ def parse_yaml(raw_yaml):
 
   return Script(connections)
 
+def parse_yaml_from_string(yaml_string):
+  """Returns a Script instance parsed from the given string containing YAML.
+  """
+
+  raw_yaml = yaml.safe_load(yaml_string)
+  if not raw_yaml:
+    raw_yaml = []
+  return parse_yaml(raw_yaml)
+
 def parse_yaml_from_file(yaml_filename):
   """Reads the contents of the given filename and returns a Script instance
   parsed from the contained YAML.
   """
 
   f = open(yaml_filename, 'r')
-  raw_yaml = f.read()
+  yaml_string = f.read()
   f.close()
-  parse_yaml(raw_yaml)
+  return parse_yaml_from_string(yaml_string)
 
 
 if __name__ == '__main__':
