@@ -1,6 +1,6 @@
 [ [ { "request": {
         "method": "GET",
-        "url":"/page1.html" },
+        "url": "/page1.html" },
       "response": {
         "status_code": 200,
         "content_type": "text/html; charset=utf-8",
