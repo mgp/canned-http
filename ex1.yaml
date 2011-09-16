@@ -1,7 +1,22 @@
-- - method: GET
-    url: /page1.html
-    reply: <html><body><h1>Page 1</h1><a href="/page2.html">Go to page 2</a></body></html>
-- - method: GET
-    url: /page2.html
-    reply: <html><body><h2>Page 2</h2></body></html>
+- - request:
+      method: GET
+      url: /page1.html
+    response:
+      status_code: 200
+      content_type: text/html; charset=utf-8
+      body: <html><body><h1>Page 1</h1><a href="/page2.html">Go to page 2</a></body></html>
+  - request:
+      method: GET
+      url: /favicon.ico
+    response:
+      status_code: 200
+      content_type: image/x-icon
+      body_filename: favicon.ico
+- - request:
+      method: GET
+      url: /page2.html
+    response:
+      status_code: 200
+      content_type: text/html; charset=utf-8
+      body: <html><body><h2>Page 2</h2></body></html>
 

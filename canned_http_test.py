@@ -183,7 +183,6 @@ class TestParseYaml(unittest.TestCase):
         body_filename='response_body_filename3')
 
 
-@unittest.skip('')
 class TestDirector(unittest.TestCase):
   def test_empty_script(self):
     script = canned_http.Script()
@@ -198,9 +197,13 @@ class TestDirector(unittest.TestCase):
       director.connection_opened()
     # Raise an exception if got request instead of closing the connection.
     raw_yaml = """
-        - - method: GET
-            url: /foo1.html
-            reply: reply1
+        - - request:
+              method: GET
+              url: /foo1.html
+            response:
+              status_code: 200
+              content_type: html
+              body: body1
         """
     script = canned_http.parse_yaml_from_string(raw_yaml)
     director = canned_http.Director(script)
@@ -210,12 +213,20 @@ class TestDirector(unittest.TestCase):
       director.got_request('GET', '/foo2.html')
     # Raise an exception if closed connection instead of getting a request.
     raw_yaml = """
-        - - method: GET
-            url: /foo1.html
-            reply: reply1
-          - method: GET
-            url: /foo2.html
-            reply: reply2
+        - - request:
+              method: GET
+              url: /foo1.html
+            response:
+              status_code: 200
+              content_type: html
+              body: body1
+          - request:
+              method: GET
+              url: /foo2.html
+            response:
+              status_code: 200
+              content_type: html
+              body: body2
         """
     script = canned_http.parse_yaml_from_string(raw_yaml)
     director = canned_http.Director(script)
@@ -226,9 +237,13 @@ class TestDirector(unittest.TestCase):
 
   def test_invalid_exchanges(self):
     raw_yaml = """
-        - - method: GET
-            url: /foo1.html
-            reply: reply1
+        - - request:
+              method: GET
+              url: /foo1.html
+            response:
+              status_code: 200
+              content_type: html
+              body: body1 
         """
     script = canned_http.parse_yaml_from_string(raw_yaml)
     # Raise an exception if the wrong method is used.
@@ -245,13 +260,17 @@ class TestDirector(unittest.TestCase):
     director = canned_http.Director(script)
     director.connection_opened()
     with self.assertRaises(canned_http.DirectorException):
-      director.got_request('GET', '/foo1.html', 'body')
+      director.got_request('GET', '/foo1.html', body='body')
     # Raise an exception if no body is provided when it should be.
     raw_yaml = """
-        - - method: GET
-            url: /foo1.html
-            body: body1
-            reply: reply1
+        - - request:
+              method: GET
+              url: /foo1.html
+              body: body1
+            response:
+              status_code: 200
+              content_type: html
+              body: body2 
         """
     script = canned_http.parse_yaml_from_string(raw_yaml)
     director = canned_http.Director(script)
@@ -259,6 +278,7 @@ class TestDirector(unittest.TestCase):
     with self.assertRaises(canned_http.DirectorException):
       director.got_request('GET', '/foo1.html')
 
+  @unittest.skip('')
   def test_valid_script(self):
     raw_yaml = """
         - - method: GET

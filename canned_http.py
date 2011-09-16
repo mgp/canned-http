@@ -5,6 +5,7 @@ Author: Michael Parker (michael.g.parker@gmail.com)
 
 import argparse
 import BaseHTTPServer
+import os
 import SocketServer
 import time
 
@@ -202,7 +203,10 @@ class Director:
           (self._next_event._connection_index, self._next_event._exchange_index))
     self._finish_current_event()
 
-  def got_request(self, method, url, body=None):
+  def _lowercase_headers(self, headers):
+    return dict(((key.lower(), value.lower()) for (key, value) in headers))
+
+  def got_request(self, method, url, headers={}, body=None):
     """Called by the web server when the client sends an HTTP request.
     
     Returns a tuple containing the delay and the reply to send back. If the
@@ -213,28 +217,43 @@ class Director:
     self._ready_next_event()
     if self._next_event._type == Director._Event._CONNECTION_CLOSED:
       raise DirectorException(
-          'Client sent request with method %s and URL %s instead of closing connection %s' %
+          "Client sent request with method '%s' and URL '%s' instead of closing connection %s" %
           (method, url, self._next_event._connection_index))
 
     exchange = self._next_event._exchange
-    if method != exchange._method:
+    request = exchange._request
+    # Assert that the method is correct.
+    if method != request._method:
       raise DirectorException(
-          "Expected 'method' value %s, received %s for connection %s, exchange %s" %
-          (exchange._method, method, self._next_event._connection_index,
+          "Expected 'method' value '%s', received '%s' for connection %s, exchange %s" %
+          (request._method, method, self._next_event._connection_index,
            self._next_event._exchange_index))
-    if url != exchange._url:
+    # Assert that the URL is correct.
+    if url != request._url:
       raise DirectorException(
-          "Expected 'url' value %s, received %s for connection %s, exchange %s" %
-          (exchange._url, url, self._next_event._connection_index,
+          "Expected 'url' value '%s', received '%s' for connection %s, exchange %s" %
+          (request._url, url, self._next_event._connection_index,
            self._next_event._exchange_index))
-    if body != exchange._body:
+    # Assert that the optional body is correct.
+    if body != request._body:
       raise DirectorException(
-          "Expected 'body' value %s, received %s for connection %s, exchange %s" %
-          (exchange._body, body, self._next_event._connection_index,
+          "Expected 'body' value '%s', received '%s' for connection %s, exchange %s" %
+          (request._body, body, self._next_event._connection_index,
            self._next_event._exchange_index))
+    # Assert that the headers are correct.
+    expected_headers = self._lowercase_headers(request._headers)
+    for header_name, expected_header_value in expected_headers.iteritems():
+      header_value = headers.get(header_name, None)
+      if header_value:
+        header_value = header_value.lower()
+      if expected_header_value != header_value:
+        raise DirectorException(
+            "Expected value '%s' for header name '%s', "
+            "received '%s' for connection %s, exchange %s" %
+            (expected_header_value, header_name, header_value, i, j))
 
     self._finish_current_event()
-    return (exchange._delay, exchange._reply)
+    return exchange._response
 
   def is_done(self):
     """Returns whether the script has been fully run by the client."""
@@ -366,9 +385,18 @@ class DirectorRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
   def set_director(director):
     DirectorRequestHandler._director = director
 
+  def setup(self):
+    BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
+
+    # Allow persistent connections.
+    self.protocol_version = 'HTTP/1.1'
+
   def handle_request(self):
+    # Get the HTTP method and URL of the request.
     method = self.command
     url = self.path
+    headers = self.headers
+    # Get the body of the request.
     content_length = self.headers.get('Content-Length', None)
     if content_length:
       content_length = int(content_length)
@@ -378,11 +406,32 @@ class DirectorRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     else:
       body = None
 
-    delay, reply = DirectorRequestHandler._director.got_request(method, url, body)
-    if reply:
-      time.sleep(delay)
-      self.send_header('Content-type:', 'text/html; charset=utf-8')
-      self.send_response(200, reply)
+    response = DirectorRequestHandler._director.got_request(method, url, headers, body)
+
+    if response:
+      time.sleep(response._delay)
+
+      # Get the body of the response.
+      if response._body:
+        body = response._body
+        file_size = len(body)
+      else:
+        f = open(response._body_filename, 'rb')
+        fs = os.fstat(f.fileno())
+        body = f.read()
+        file_size = fs.st_size
+        f.close()
+
+      # Send the headers of the response.
+      self.send_response(response._status_code)
+      self.send_header('Content-Type', response._content_type)
+      self.send_header('Content-Length', file_size)
+      for header_name, header_value in response._headers:
+        self.send_header(header_name, header_value)
+      self.end_headers()
+
+      # Send the body.
+      self.wfile.write(body)
 
   def do_GET(self):
     self.handle_request()
