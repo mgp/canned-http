@@ -33,8 +33,8 @@ class TestParseYaml(unittest.TestCase):
               content_type: html
               body: <html><body></body></html>
         """
-    with self.assertRaises(canned_http.YamlParseError):
-      canned_http.parse_yaml_from_string(raw_yaml)
+    with self.assertRaises(canned_http.ScriptParseError):
+      canned_http.script_from_yaml_string(raw_yaml)
     # Raise exception if method is invalid in request.
     raw_yaml = """
         - - request:
@@ -45,8 +45,8 @@ class TestParseYaml(unittest.TestCase):
               content_type: html
               body: <html><body></body></html>
         """
-    with self.assertRaises(canned_http.YamlParseError):
-      canned_http.parse_yaml_from_string(raw_yaml)
+    with self.assertRaises(canned_http.ScriptParseError):
+      canned_http.script_from_yaml_string(raw_yaml)
     # Raise exception if url is missing in request.
     raw_yaml = """
         - - request:
@@ -56,8 +56,8 @@ class TestParseYaml(unittest.TestCase):
               content_type: html
               body: <html><body></body></html>
         """
-    with self.assertRaises(canned_http.YamlParseError):
-      canned_http.parse_yaml_from_string(raw_yaml)
+    with self.assertRaises(canned_http.ScriptParseError):
+      canned_http.script_from_yaml_string(raw_yaml)
     # Raise exception if status code is missing in response.
     raw_yaml = """
         - - request:
@@ -67,8 +67,8 @@ class TestParseYaml(unittest.TestCase):
               content_type: html
               body: <html><body></body></html>
         """
-    with self.assertRaises(canned_http.YamlParseError):
-      canned_http.parse_yaml_from_string(raw_yaml)
+    with self.assertRaises(canned_http.ScriptParseError):
+      canned_http.script_from_yaml_string(raw_yaml)
     # Raise exception if content type is missing in response.
     raw_yaml = """
         - - request:
@@ -78,8 +78,8 @@ class TestParseYaml(unittest.TestCase):
               status_code: 200
               body: <html><body></body></html>
         """
-    with self.assertRaises(canned_http.YamlParseError):
-      canned_http.parse_yaml_from_string(raw_yaml)
+    with self.assertRaises(canned_http.ScriptParseError):
+      canned_http.script_from_yaml_string(raw_yaml)
     # Raise exception if both body and filename are present in response.
     raw_yaml = """
         - - request:
@@ -91,8 +91,8 @@ class TestParseYaml(unittest.TestCase):
               body: <html><body></body></html>
               body_filename: favicon.ico
         """
-    with self.assertRaises(canned_http.YamlParseError):
-      canned_http.parse_yaml_from_string(raw_yaml)
+    with self.assertRaises(canned_http.ScriptParseError):
+      canned_http.script_from_yaml_string(raw_yaml)
     # Raise exception if reply is missing for exchange that is not last.
     raw_yaml = """
         - - request:
@@ -106,8 +106,8 @@ class TestParseYaml(unittest.TestCase):
               content_type: html
               body: <html><body></body></html>
         """
-    with self.assertRaises(canned_http.YamlParseError):
-      canned_http.parse_yaml_from_string(raw_yaml)
+    with self.assertRaises(canned_http.ScriptParseError):
+      canned_http.script_from_yaml_string(raw_yaml)
 
   def test_method_capitalization(self):
     # Capitalization of method should not matter.
@@ -125,7 +125,7 @@ class TestParseYaml(unittest.TestCase):
               content_type: %s
               body: %s
         """ % (method, url, status_code, content_type, response_body)
-    script = canned_http.parse_yaml_from_string(raw_yaml)
+    script = canned_http.script_from_yaml_string(raw_yaml)
     self.assertEqual(1, len(script._connections))
     connection = script._connections[0]
     self.assertEqual(1, len(connection._exchanges))
@@ -136,7 +136,7 @@ class TestParseYaml(unittest.TestCase):
   def test_empty_script(self):
     raw_yaml = """
         """
-    script = canned_http.parse_yaml_from_string(raw_yaml)
+    script = canned_http.script_from_yaml_string(raw_yaml)
     self.assertEqual(0, len(script._connections))
 
   def test_valid_script(self):
@@ -161,7 +161,7 @@ class TestParseYaml(unittest.TestCase):
               delay: 1000
               body_filename: response_body_filename3
         """
-    script = canned_http.parse_yaml_from_string(raw_yaml)
+    script = canned_http.script_from_yaml_string(raw_yaml)
     self.assertEqual(2, len(script._connections))
 
     # Verify the two exchanges of the first connection.
@@ -193,7 +193,7 @@ class TestDirector(unittest.TestCase):
     # Raise an exception if connection opened after the script ended.
     script = canned_http.Script()
     director = canned_http.Director(script)
-    with self.assertRaises(canned_http.DirectorException):
+    with self.assertRaises(canned_http.DirectorError):
       director.connection_opened()
     # Raise an exception if got request instead of closing the connection.
     raw_yaml = """
@@ -205,11 +205,11 @@ class TestDirector(unittest.TestCase):
               content_type: html
               body: body1
         """
-    script = canned_http.parse_yaml_from_string(raw_yaml)
+    script = canned_http.script_from_yaml_string(raw_yaml)
     director = canned_http.Director(script)
     director.connection_opened()
     director.got_request('GET', '/foo1.html')
-    with self.assertRaises(canned_http.DirectorException):
+    with self.assertRaises(canned_http.DirectorError):
       director.got_request('GET', '/foo2.html')
     # Raise an exception if closed connection instead of getting a request.
     raw_yaml = """
@@ -228,11 +228,11 @@ class TestDirector(unittest.TestCase):
               content_type: html
               body: body2
         """
-    script = canned_http.parse_yaml_from_string(raw_yaml)
+    script = canned_http.script_from_yaml_string(raw_yaml)
     director = canned_http.Director(script)
     director.connection_opened()
     director.got_request('GET', '/foo1.html')
-    with self.assertRaises(canned_http.DirectorException):
+    with self.assertRaises(canned_http.DirectorError):
       director.connection_closed()
 
   def test_invalid_exchanges(self):
@@ -245,21 +245,21 @@ class TestDirector(unittest.TestCase):
               content_type: html
               body: body1 
         """
-    script = canned_http.parse_yaml_from_string(raw_yaml)
+    script = canned_http.script_from_yaml_string(raw_yaml)
     # Raise an exception if the wrong method is used.
     director = canned_http.Director(script)
     director.connection_opened()
-    with self.assertRaises(canned_http.DirectorException):
+    with self.assertRaises(canned_http.DirectorError):
       director.got_request('PUT', '/foo1.html')
     # Raise an exception if the wrong URL is requested.
     director = canned_http.Director(script)
     director.connection_opened()
-    with self.assertRaises(canned_http.DirectorException):
+    with self.assertRaises(canned_http.DirectorError):
       director.got_request('GET', '/foo2.html')
     # Raise an exception if a body is provided when it should not.
     director = canned_http.Director(script)
     director.connection_opened()
-    with self.assertRaises(canned_http.DirectorException):
+    with self.assertRaises(canned_http.DirectorError):
       director.got_request('GET', '/foo1.html', body='body')
     # Raise an exception if no body is provided when it should be.
     raw_yaml = """
@@ -272,45 +272,59 @@ class TestDirector(unittest.TestCase):
               content_type: html
               body: body2 
         """
-    script = canned_http.parse_yaml_from_string(raw_yaml)
+    script = canned_http.script_from_yaml_string(raw_yaml)
     director = canned_http.Director(script)
     director.connection_opened()
-    with self.assertRaises(canned_http.DirectorException):
+    with self.assertRaises(canned_http.DirectorError):
       director.got_request('GET', '/foo1.html')
 
-  @unittest.skip('')
+  def _assert_response(self, response, status_code, content_type,
+      delay=0, headers={}, body=None, body_filename=None):
+    self.assertEqual(status_code, response._status_code)
+    self.assertEqual(content_type, response._content_type)
+    self.assertEqual(delay, response._delay)
+    self.assertDictEqual(headers, response._headers)
+    self.assertEqual(body, response._body)
+    self.assertEqual(body_filename, response._body_filename)
+
   def test_valid_script(self):
     raw_yaml = """
-        - - method: GET
-            url: /foo1.html
-            reply: reply1
-            delay: 0
-          - method: POST
-            url: /foo2.html
-            body: body2
-        - - method: DELETE
-            url: /foo3.html
-            body: body3
-            reply: reply3
-            delay: 0
+        - - request:
+              method: GET
+              url: /foo1.html
+            response:
+              status_code: 200
+              content_type: html
+              body: body1
+              delay: 50
+          - request:
+              method: POST
+              url: /foo2.html
+              body: body2
+        - - request:
+              method: DELETE
+              url: /foo3.html
+              body: body3
+            response:
+              status_code: 200
+              content_type: html
+              body: body3
         """
-    script = canned_http.parse_yaml_from_string(raw_yaml)
+    script = canned_http.script_from_yaml_string(raw_yaml)
     director = canned_http.Director(script)
 
     # Verify the two exchanges of the first connection.
     director.connection_opened()
-    delay, reply = director.got_request('GET', '/foo1.html')
-    self.assertEqual(0, delay)
-    self.assertEqual(reply, 'reply1')
-    delay, reply = director.got_request('POST', '/foo2.html', 'body2')
-    self.assertIsNone(reply)
+    response = director.got_request('GET', '/foo1.html')
+    self._assert_response(response, 200, 'html', delay=50, body='body1')
+    response = director.got_request('POST', '/foo2.html', body='body2')
+    self.assertIsNone(response)
     director.connection_closed()
 
     # Verify the one exchange of the second connection.
     director.connection_opened()
-    delay, reply = director.got_request('DELETE', '/foo3.html', 'body3')
-    self.assertEqual(0, delay)
-    self.assertEqual(reply, 'reply3')
+    response = director.got_request('DELETE', '/foo3.html', body='body3')
+    self._assert_response(response, 200, 'html', body='body3')
     director.connection_closed()
 
 if __name__ == '__main__':

@@ -1,12 +1,17 @@
-"""TODO
+"""A web server that accepts HTTP connections from a client, verifies that the
+client's requests contain expected values, and returns a canned response to each
+request if correct. The expected request values and canned responses are read
+from a script that is provided when the web server is run.
 
 Author: Michael Parker (michael.g.parker@gmail.com)
 """
 
 import argparse
 import BaseHTTPServer
+import json
 import os
 import SocketServer
+import sys
 import time
 
 import yaml
@@ -43,9 +48,6 @@ class Exchange:
   """An exchange, or a request received from the client and an optional reply by
   the server.
 
-  The request by the client must contain a valid HTTP method and URL. The body,
-  typically only used with POST or PUT, is optional.
-
   The server can either can either send a reply after some specified delay in
   milliseconds, or can choose to send no reply. If the server does not send a
   reply, it is the responsibility of the client to terminate the connection.
@@ -53,7 +55,17 @@ class Exchange:
   well-behaved clients should also timeout and disconnect.)
   """
 
+  @staticmethod
+  def _join_parts(string_parts):
+    string = ', '.join(('%s: %s' % (key, value) for (key, value) in string_parts))
+    return '{%s}' % string
+
   class Request:
+    """A request from the client to the server.
+
+    A request must contain a HTTP method and URL. Expected headers and the
+    request body, typically only used with POST or PUT, are optional.
+    """
     def __init__(self, method, url, headers=None, body=None):
       self._method = method
       self._url = url
@@ -66,17 +78,26 @@ class Exchange:
         request_parts.append(('headers', self._headers))
       if self._body:
         request_parts.append(('body', self._body))
-      request_str = ', '.join(('%s: %s' % (key, value) for (key, value) in request_parts))
-      return '{%s}' % request_str
+      return Exchange._join_parts(request_parts)
 
   class Response:
+    """A response from the server to the client.
+
+    A response must contain a HTTP status code, a value for the Content-Type
+    header, and a body. The body is either a given string or the contents of a
+    given file. Additional headers and a delay before sending the response are
+    optional.
+    """
+
     @staticmethod
     def response_with_body(status_code, content_type, body, headers=None, delay=0):
+      """Returns a response with the given string as the body."""
       return Exchange.Response(status_code, content_type, delay, headers, body=body)
 
     @staticmethod
     def response_from_file(status_code, content_type, body_filename, headers=None,
         delay=0):
+      """Returns a response with the contents of the given file as the body."""
       return Exchange.Response(status_code, content_type, delay, headers,
           body_filename=body_filename)
 
@@ -90,8 +111,17 @@ class Exchange:
       self._body_filename = body_filename
 
     def __repr__(self):
-      # TODO
-      return ''
+      response_parts = [('status_code', self._status_code),
+                        ('content_type', self._content_type)]
+      if self._delay:
+        response_parts.append(('delay', self._delay))
+      if self._headers:
+        response_parts.append(('headers', repr(self._headers)))
+      if self._body:
+        response_parts.append(('body', self._body))
+      elif self._body_filename:
+        response_parts.append(('body_filename', self._body_filename))
+      return Exchange._join_parts(response_parts)
 
   def __init__(self, request, response=None):
     self._request = request
@@ -104,9 +134,10 @@ class Exchange:
       return '{request=%s}' % repr(self._request)
 
 
-class DirectorException(Exception):
+class DirectorError(Exception):
   """An exception raised if the Director encountered an unexpected request or
-  event in a Script."""
+  event in a Script.
+  """
 
   def __init__(self, message):
     self._message = message
@@ -122,7 +153,7 @@ class Director:
   """Class that ensures that connections established and requests sent by the
   client follow the provided Script instance.
 
-  If the script is not followed, a DirectorException is raised.
+  If the script is not followed, a DirectorError is raised.
   """
 
   class _Event:
@@ -136,16 +167,20 @@ class Director:
 
     @staticmethod
     def connection_opened_event(connection_index):
+      """Returns an event for when a connection is opened."""
       return Director._Event(
           Director._Event._CONNECTION_OPENED, connection_index)
 
     @staticmethod
     def connection_closed_event(connection_index):
+      """Returns an event for when a connection is closed."""
       return Director._Event(
           Director._Event._CONNECTION_CLOSED, connection_index)
 
     @staticmethod
     def exchange_event(connection_index, exchange_index, exchange):
+      """Returns an event for the given exchange, or request and optional reply.
+      """
       return Director._Event(
           Director._Event._GOT_REQUEST, connection_index, exchange_index, exchange)
 
@@ -190,7 +225,7 @@ class Director:
 
     self._ready_next_event()
     if self._next_event is None:
-      raise DirectorException('Client opened a connection after the script ended.')
+      raise DirectorError('Client opened a connection after the script ended.')
     self._finish_current_event()
 
   def connection_closed(self):
@@ -198,7 +233,7 @@ class Director:
 
     self._ready_next_event()
     if self._next_event._type == Director._Event._GOT_REQUEST:
-      raise DirectorException(
+      raise DirectorError(
           'Client closed the connection %s instead of performing exchange %s' %
           (self._next_event._connection_index, self._next_event._exchange_index))
     self._finish_current_event()
@@ -216,7 +251,7 @@ class Director:
 
     self._ready_next_event()
     if self._next_event._type == Director._Event._CONNECTION_CLOSED:
-      raise DirectorException(
+      raise DirectorError(
           "Client sent request with method '%s' and URL '%s' instead of closing connection %s" %
           (method, url, self._next_event._connection_index))
 
@@ -224,19 +259,19 @@ class Director:
     request = exchange._request
     # Assert that the method is correct.
     if method != request._method:
-      raise DirectorException(
+      raise DirectorError(
           "Expected 'method' value '%s', received '%s' for connection %s, exchange %s" %
           (request._method, method, self._next_event._connection_index,
            self._next_event._exchange_index))
     # Assert that the URL is correct.
     if url != request._url:
-      raise DirectorException(
+      raise DirectorError(
           "Expected 'url' value '%s', received '%s' for connection %s, exchange %s" %
           (request._url, url, self._next_event._connection_index,
            self._next_event._exchange_index))
     # Assert that the optional body is correct.
     if body != request._body:
-      raise DirectorException(
+      raise DirectorError(
           "Expected 'body' value '%s', received '%s' for connection %s, exchange %s" %
           (request._body, body, self._next_event._connection_index,
            self._next_event._exchange_index))
@@ -247,7 +282,7 @@ class Director:
       if header_value:
         header_value = header_value.lower()
       if expected_header_value != header_value:
-        raise DirectorException(
+        raise DirectorError(
             "Expected value '%s' for header name '%s', "
             "received '%s' for connection %s, exchange %s" %
             (expected_header_value, header_name, header_value, i, j))
@@ -262,7 +297,7 @@ class Director:
     return self._next_event is None
 
 
-class YamlParseError(Exception):
+class ScriptParseError(Exception):
   """An exception raised if elements of a Script could not be parsed from YAML.
   """
 
@@ -276,36 +311,36 @@ class YamlParseError(Exception):
     return self._message
 
 
-def parse_yaml(raw_yaml):
-  """Returns a Script instance parsed from the given Python object containing YAML.
+def script_from_data(script_data):
+  """Returns a Script instance parsed from the given Python objects.
   """
 
   connections = []
-  for i, connection_yaml in enumerate(raw_yaml, 1):
+  for i, connection_data in enumerate(script_data, 1):
     exchanges = []
     reached_no_reply = False
-    for j, exchange_yaml in enumerate(connection_yaml, 1):
+    for j, exchange_data in enumerate(connection_data, 1):
       if reached_no_reply:
-        raise YamlParseError(
+        raise ScriptParseError(
             "Reply missing for exchange preceding connection %s, exchange %s" % (i, j))
 
-      request_yaml = exchange_yaml.get('request', None)
+      request_yaml = exchange_data.get('request', None)
       if request_yaml is None:
-        raise YamlParseError(
+        raise ScriptParseError(
             "Missing 'request' key for connection %s, exchange %s" % (i, j))
       # Get and validate the required method.
       method = request_yaml.get('method', None)
       if method is None:
-        raise YamlParseError(
+        raise ScriptParseError(
             "Missing 'method' key for request in connection %s, exchange %s" % (i, j))
       method_upper = method.upper()
       if method_upper not in ('GET', 'PUT', 'POST', 'DELETE'):
-        raise YamlParseError(
+        raise ScriptParseError(
             "Invalid method '%s' for request in connection %s, exchange %s" % (method, i, j))
       # Get the required URL.
       url = request_yaml.get('url', None)
       if not url:
-        raise YamlParseError(
+        raise ScriptParseError(
             "Missing 'url' key for request in connection %s, exchange %s" % (i, j))
       # Get the optional headers and body.
       headers = request_yaml.get('headers', {})
@@ -313,17 +348,17 @@ def parse_yaml(raw_yaml):
       # Create the request.
       request = Exchange.Request(method, url, headers, body)
 
-      response_yaml = exchange_yaml.get('response', None)
+      response_yaml = exchange_data.get('response', None)
       if response_yaml:
         # Get the required status code.
         status_code = response_yaml.get('status_code', None)
         if not status_code:
-          raise YamlParseError(
+          raise ScriptParseError(
               "Missing 'status_code' key for response in connection %s, exchange %s" % (i, j))
         # Get the required content type.
         content_type = response_yaml.get('content_type', None)
         if not content_type:
-          raise YamlParseError(
+          raise ScriptParseError(
               "Missing 'content_type' key for response in connection %s, exchange %s" % (i, j))
         # Get the optional headers and delay.
         headers = response_yaml.get('headers', {})
@@ -332,7 +367,7 @@ def parse_yaml(raw_yaml):
         body = response_yaml.get('body', None)
         body_filename = response_yaml.get('body_filename', None)
         if body and body_filename:
-          raise YamlParseError(
+          raise ScriptParseError(
               "Found both 'body' and 'body_filename' keys for response in "
               "connection %s, exchange %s" % (i, j))
         elif body:
@@ -344,7 +379,7 @@ def parse_yaml(raw_yaml):
           response = Exchange.Response.response_from_file(
               status_code, content_type, body_filename, headers, delay)
         else:
-          raise YamlParseError(
+          raise ScriptParseError(
               "Missing both 'body' and 'body_filename' keys for response in "
               "connection %s, exchange %s" % (i, j))
       else:
@@ -360,16 +395,25 @@ def parse_yaml(raw_yaml):
 
   return Script(connections)
 
-def parse_yaml_from_string(yaml_string):
+def script_from_json_string(json_string):
+  """Returns a Script instance parsed from the given string containing JSON.
+  """
+
+  raw_json = json.loads(json_string)
+  if not raw_json:
+    raw_json = []
+  return script_from_data(raw_json)
+
+def script_from_yaml_string(yaml_string):
   """Returns a Script instance parsed from the given string containing YAML.
   """
 
   raw_yaml = yaml.safe_load(yaml_string)
   if not raw_yaml:
     raw_yaml = []
-  return parse_yaml(raw_yaml)
+  return script_from_data(raw_yaml)
 
-def parse_yaml_from_file(yaml_filename):
+def script_from_yaml_file(yaml_filename):
   """Reads the contents of the given filename and returns a Script instance
   parsed from the contained YAML.
   """
@@ -377,13 +421,31 @@ def parse_yaml_from_file(yaml_filename):
   f = open(yaml_filename, 'r')
   yaml_string = f.read()
   f.close()
-  return parse_yaml_from_string(yaml_string)
+  return script_from_yaml_string(yaml_string)
+
+def script_from_json_file(json_filename):
+  """Reads the contents of the given filename and returns a Script instance
+  parsed from the contained YAML.
+  """
+
+  f = open(yaml_filename, 'r')
+  json_string = f.read()
+  f.close()
+  return script_from_json_string(json_string)
 
 
 class DirectorRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+  """A request handler that uses the given Director instance to verify the
+  script.
+  """
+
   @staticmethod
   def set_director(director):
+    """Sets the director for use over the lifetime of the web server."""
     DirectorRequestHandler._director = director
+
+    DirectorRequestHandler._script_error = False
+    DirectorRequestHandler._script_done = False
 
   def setup(self):
     BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
@@ -430,8 +492,10 @@ class DirectorRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.send_header(header_name, header_value)
       self.end_headers()
 
-      # Send the body.
+      # Send the body to conclude the response.
       self.wfile.write(body)
+
+    DirectorRequestHandler._script_done = DirectorRequestHandler._director.is_done()
 
   def do_GET(self):
     self.handle_request()
@@ -446,26 +510,44 @@ class DirectorRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     self.handle_request()
 
   def handle(self):
-    DirectorRequestHandler._director.connection_opened()
-    BaseHTTPServer.BaseHTTPRequestHandler.handle(self)
-    DirectorRequestHandler._director.connection_closed()
-
+    try:
+      DirectorRequestHandler._director.connection_opened()
+      BaseHTTPServer.BaseHTTPRequestHandler.handle(self)
+      DirectorRequestHandler._director.connection_closed()
+      DirectorRequestHandler._script_done = DirectorRequestHandler._director.is_done()
+    except DirectorError as e:
+      # Exceptions raised from handle_request will also be caught here.
+      print >> sys.stderr, 'ERROR: ', repr(e)
+      DirectorRequestHandler._script_error = True
 
 if __name__ == '__main__':
   arg_parser = argparse.ArgumentParser()
   arg_parser.add_argument('--port', type=int, required=False, default=8080,
       help='Port the web server should run on')
-  arg_parser.add_argument('--yaml_filename', type=str, required=True,
+  arg_parser.add_argument('--json_filename', type=str, required=False, default='',
+      help='JSON input file for expected requests and replies')
+  arg_parser.add_argument('--yaml_filename', type=str, required=False, default='',
       help='YAML input file for expected requests and replies')
-  arg_parser.add_argument('--quit_on_failure', type=bool, required=False, default=True,
-      help='Quit if the client does not follow the script')
   parsed_args = arg_parser.parse_args()
 
-  # Create the script and a Director instance from the script.
-  script = parse_yaml_from_file(parsed_args.yaml_filename)
+  # Create the script from the provided filename.
+  if parsed_args.json_filename and parsed_args.yaml_filename:
+    print >> sys.stderr, 'Cannot specify both --json_filename and --yaml_filename.'
+    sys.exit(0)
+  elif parsed_args.json_filename:
+    script = script_from_json_file(parsed_args.json_filename)
+  elif parsed_args.yaml_filename:
+    script = script_from_yaml_file(parsed_args.yaml_filename)
+  else:
+    print >> sys.stderr, 'Must specify either --json_filename or --yaml_filename.'
+    sys.exit(0)
+
+  # Create the Director instance and begin serving.
   director = Director(script)
   DirectorRequestHandler.set_director(director)
-  # Begin serving on the specified port.
+  # Serve on the specified port until the script is finished or not followed.
   server = SocketServer.TCPServer(("", parsed_args.port), DirectorRequestHandler)
-  server.serve_forever()
+  while (not DirectorRequestHandler._script_done and
+         not DirectorRequestHandler._script_error):
+    server.handle_request()
 
