@@ -14,8 +14,6 @@ import SocketServer
 import sys
 import time
 
-import yaml
-
 
 class Script:
   """A script specifying the expected requests made by the client, and the
@@ -407,6 +405,9 @@ def script_from_json_string(json_string):
 def script_from_yaml_string(yaml_string):
   """Returns a Script instance parsed from the given string containing YAML.
   """
+
+  # The PyYAML library, see http://pyyaml.org/
+  import yaml
 
   raw_yaml = yaml.safe_load(yaml_string)
   if not raw_yaml:
