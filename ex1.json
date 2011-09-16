@@ -1,6 +1,4 @@
-[
-  [
-    { "request": {
+[ [ { "request": {
         "method": "GET",
         "url":"/page1.html" },
       "response": {
@@ -17,8 +15,7 @@
         "body_filename": "favicon.ico" }
     }
   ],
-  [
-    { "request": {
+  [ { "request": {
         "method": "GET",
         "url": "/page2.html" },
       "response": {
