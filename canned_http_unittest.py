@@ -1,3 +1,4 @@
+import os
 import unittest
 
 import canned_http
@@ -180,7 +181,7 @@ class TestParseYaml(unittest.TestCase):
     exchange = connection._exchanges[0]
     self._assert_request(exchange, 'DELETE', '/foo3.html')
     self._assert_response(exchange, 200, 'html', delay=1000,
-        body_filename='response_body_filename3')
+        body_filename=os.path.abspath('response_body_filename3'))
 
 
 class TestDirector(unittest.TestCase):

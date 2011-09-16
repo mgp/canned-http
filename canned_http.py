@@ -334,9 +334,12 @@ class ScriptParseError(Exception):
     return self._message
 
 
-def script_from_data(script_data):
+def script_from_data(script_data, base_dir):
   """Returns a Script instance parsed from the given Python objects.
   """
+
+  if not base_dir:
+    base_dir = os.getcwd()
 
   connections = []
   for i, connection_data in enumerate(script_data, 1):
@@ -401,6 +404,8 @@ def script_from_data(script_data):
           response = Exchange.Response.response_with_body(
               status_code, content_type, body, headers, delay)
         elif body_filename:
+          if not os.path.isabs(body_filename):
+            body_filename = os.path.normpath(os.path.join(base_dir, body_filename))
           # Create the response with a body from the given filename.
           response = Exchange.Response.response_from_file(
               status_code, content_type, body_filename, headers, delay)
@@ -421,16 +426,16 @@ def script_from_data(script_data):
 
   return Script(connections)
 
-def script_from_json_string(json_string):
+def script_from_json_string(json_string, base_dir=None):
   """Returns a Script instance parsed from the given string containing JSON.
   """
 
   raw_json = json.loads(json_string)
   if not raw_json:
     raw_json = []
-  return script_from_data(raw_json)
+  return script_from_data(raw_json, base_dir)
 
-def script_from_yaml_string(yaml_string):
+def script_from_yaml_string(yaml_string, base_dir=None):
   """Returns a Script instance parsed from the given string containing YAML.
   """
 
@@ -440,7 +445,10 @@ def script_from_yaml_string(yaml_string):
   raw_yaml = yaml.safe_load(yaml_string)
   if not raw_yaml:
     raw_yaml = []
-  return script_from_data(raw_yaml)
+  return script_from_data(raw_yaml, base_dir)
+
+def _dirname_for_filename(filename):
+  return os.path.dirname(os.path.abspath(filename))
 
 def script_from_json_file(json_filename):
   """Reads the contents of the given filename and returns a Script instance
@@ -450,7 +458,8 @@ def script_from_json_file(json_filename):
   f = open(json_filename, 'r')
   json_string = f.read()
   f.close()
-  return script_from_json_string(json_string)
+  return script_from_json_string(
+      json_string, _dirname_for_filename(json_filename))
 
 def script_from_yaml_file(yaml_filename):
   """Reads the contents of the given filename and returns a Script instance
@@ -460,7 +469,8 @@ def script_from_yaml_file(yaml_filename):
   f = open(yaml_filename, 'r')
   yaml_string = f.read()
   f.close()
-  return script_from_yaml_string(yaml_string)
+  return script_from_yaml_string(
+      yaml_string, _dirname_for_filename(yaml_filename))
 
 
 class DirectorRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
