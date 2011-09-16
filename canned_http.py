@@ -266,9 +266,6 @@ class Director:
           (self._next_event._connection_index, self._next_event._exchange_index))
     self._finish_current_event()
 
-  def _lowercase_header_names(self, headers):
-    return dict(((key.lower(), value) for (key, value) in headers.iteritems()))
-
   def got_request(self, method, url, headers={}, body=None):
     """Called by the web server when the client sends an HTTP request.
     
@@ -304,9 +301,8 @@ class Director:
           (request._body, body, self._next_event._connection_index,
            self._next_event._exchange_index))
     # Assert that the headers are correct.
-    expected_headers = self._lowercase_header_names(request._headers)
-    headers = self._lowercase_header_names(headers)
-    for header_name, expected_header_value in expected_headers.iteritems():
+    for header_name, expected_header_value in request._headers.iteritems():
+      # Class rfc822.Message performs a case insensitive search on header names.
       header_value = headers.get(header_name, None)
       if expected_header_value != header_value:
         raise DirectorError(
@@ -521,7 +517,7 @@ class DirectorRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       self.send_response(response._status_code)
       self.send_header('Content-Type', response._content_type)
       self.send_header('Content-Length', file_size)
-      for header_name, header_value in response._headers:
+      for header_name, header_value in response._headers.iteritems():
         self.send_header(header_name, header_value)
       self.end_headers()
 
