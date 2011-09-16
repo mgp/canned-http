@@ -306,11 +306,6 @@ class TestDirector(unittest.TestCase):
               body: body1 
         """
     script = canned_http.script_from_yaml_string(raw_yaml)
-    # Capitalization of header names should not matter.
-    director = canned_http.Director(script)
-    director.connection_opened()
-    director.got_request('GET', '/foo1.html', {'HEADER_NAME1': 'header_value1'})
-    director.connection_closed()
     # Capitalization of header values should matter.
     director = canned_http.Director(script)
     director.connection_opened()

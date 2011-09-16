@@ -262,7 +262,7 @@ class Director:
     self._ready_next_event()
     if self._next_event._type == Director._Event._GOT_REQUEST:
       raise DirectorError(
-          'Client closed the connection %s instead of performing exchange %s' %
+          'Client closed connection %s instead of performing exchange %s' %
           (self._next_event._connection_index, self._next_event._exchange_index))
     self._finish_current_event()
 
