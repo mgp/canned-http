@@ -1,0 +1,20 @@
+[ [ { "request": {
+        "method": "GET",
+        "url": "/page1.html" },
+      "response": {
+        "status_code": 200,
+        "content_type": "text/html; charset=utf-8",
+        "delay": 5,
+        "body": "<html><body>It took awhile, but the answer is<h2>42</h2></body></html>" }
+    },
+    { "request": {
+        "method": "GET",
+        "url": "/favicon.ico" },
+     "response": {
+        "status_code": 200,
+        "content_type": "image/x-icon",
+        "body_filename": "favicon.ico" }
+    }
+  ]
+]
+
