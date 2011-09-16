@@ -428,7 +428,7 @@ def script_from_json_file(json_filename):
   parsed from the contained YAML.
   """
 
-  f = open(yaml_filename, 'r')
+  f = open(json_filename, 'r')
   json_string = f.read()
   f.close()
   return script_from_json_string(json_string)
