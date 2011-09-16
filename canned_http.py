@@ -1,7 +1,37 @@
-"""A web server that accepts HTTP connections from a client, verifies that the
-client's requests contain expected values, and returns a canned response to each
-request if correct. The expected request values and canned responses are read
-from a script that is provided when the web server is run.
+"""A web server that accepts HTTP requests from a client, verifies that each
+request contains some expected values, and returns canned responses for the
+requests. The expected values in the requests and the canned responses are
+specified by a script that is provided when the web server is run.
+
+For requests, the script specifies the following parameters:
+  * method (required): The HTTP method used, such as GET or POST.
+  * url (required): The URL path requested.
+  * headers (optional): A map of expected HTTP headers. If provided, the headers
+    of a request must be a superset of these headers.
+
+For responses, the script specifies the following parameters:
+  * status_code (required): The HTTP status code to return, such as 200 or 404.
+  * content_type (required): The value of the Content-Type header to return.
+  * headers (optional): A map of HTTP header names and values to return in the
+    response.
+  * delay (optional): The number of milliseconds to wait before sending the
+    response, which is useful for simulating long-polling by the server.
+  * body (optional): The body of the response, such as the HTML to render in the
+    browser in response to a GET request.
+  * body_filename (optional): The filename whose contents should be used as the
+    body of the response.
+A response can be omitted altogether, which is useful for simulating
+long-polling where the client must close the connection. If a response is
+present, then exactly one of body and body_filename must be set. Setting both
+or neither is invalid.
+
+A request and the optional response is called an exchange. The persistent
+connections feature of HTTP 1.1 allows multiple exchanges over a single TCP/IP
+connection between the client and the server, provided that every exchange
+except the last includes a response. An array of exchanges represents all the
+exchanges across a single connection. The script is simply an array of such
+arrays, so that it specifies the number of expected connections, and the order
+of exchanges for each connection.
 
 Author: Michael Parker (michael.g.parker@gmail.com)
 """
@@ -296,8 +326,7 @@ class Director:
 
 
 class ScriptParseError(Exception):
-  """An exception raised if elements of a Script could not be parsed from YAML.
-  """
+  """An exception raised if elements of a Script could not be parsed."""
 
   def __init__(self, message):
     self._message = message
@@ -414,6 +443,16 @@ def script_from_yaml_string(yaml_string):
     raw_yaml = []
   return script_from_data(raw_yaml)
 
+def script_from_json_file(json_filename):
+  """Reads the contents of the given filename and returns a Script instance
+  parsed from the contained JSON.
+  """
+
+  f = open(json_filename, 'r')
+  json_string = f.read()
+  f.close()
+  return script_from_json_string(json_string)
+
 def script_from_yaml_file(yaml_filename):
   """Reads the contents of the given filename and returns a Script instance
   parsed from the contained YAML.
@@ -423,16 +462,6 @@ def script_from_yaml_file(yaml_filename):
   yaml_string = f.read()
   f.close()
   return script_from_yaml_string(yaml_string)
-
-def script_from_json_file(json_filename):
-  """Reads the contents of the given filename and returns a Script instance
-  parsed from the contained YAML.
-  """
-
-  f = open(json_filename, 'r')
-  json_string = f.read()
-  f.close()
-  return script_from_json_string(json_string)
 
 
 class DirectorRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
