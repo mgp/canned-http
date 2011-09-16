@@ -347,12 +347,12 @@ def script_from_data(script_data):
         raise ScriptParseError(
             "Reply missing for exchange preceding connection %s, exchange %s" % (i, j))
 
-      request_yaml = exchange_data.get('request', None)
-      if request_yaml is None:
+      request_data = exchange_data.get('request', None)
+      if request_data is None:
         raise ScriptParseError(
             "Missing 'request' key for connection %s, exchange %s" % (i, j))
       # Get and validate the required method.
-      method = request_yaml.get('method', None)
+      method = request_data.get('method', None)
       if method is None:
         raise ScriptParseError(
             "Missing 'method' key for request in connection %s, exchange %s" % (i, j))
@@ -362,36 +362,36 @@ def script_from_data(script_data):
             "Invalid method '%s' for request in connection %s, exchange %s" %
             (method, i, j))
       # Get the required URL.
-      url = request_yaml.get('url', None)
+      url = request_data.get('url', None)
       if not url:
         raise ScriptParseError(
             "Missing 'url' key for request in connection %s, exchange %s" % (i, j))
       # Get the optional headers and body.
-      headers = request_yaml.get('headers', {})
-      body = request_yaml.get('body', None)
+      headers = request_data.get('headers', {})
+      body = request_data.get('body', None)
       # Create the request.
       request = Exchange.Request(method, url, headers, body)
 
-      response_yaml = exchange_data.get('response', None)
-      if response_yaml:
+      response_data = exchange_data.get('response', None)
+      if response_data:
         # Get the required status code.
-        status_code = response_yaml.get('status_code', None)
+        status_code = response_data.get('status_code', None)
         if not status_code:
           raise ScriptParseError(
               "Missing 'status_code' key for response in connection %s, exchange %s" %
               (i, j))
         # Get the required content type.
-        content_type = response_yaml.get('content_type', None)
+        content_type = response_data.get('content_type', None)
         if not content_type:
           raise ScriptParseError(
               "Missing 'content_type' key for response in connection %s, exchange %s" %
               (i, j))
         # Get the optional headers and delay.
-        headers = response_yaml.get('headers', {})
-        delay = response_yaml.get('delay', 0)
+        headers = response_data.get('headers', {})
+        delay = response_data.get('delay', 0)
 
-        body = response_yaml.get('body', None)
-        body_filename = response_yaml.get('body_filename', None)
+        body = response_data.get('body', None)
+        body_filename = response_data.get('body_filename', None)
         if body and body_filename:
           raise ScriptParseError(
               "Found both 'body' and 'body_filename' keys for response in "
