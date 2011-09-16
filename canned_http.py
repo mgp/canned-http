@@ -14,8 +14,8 @@ For responses, the script specifies the following parameters:
   * content_type (required): The value of the Content-Type header to return.
   * headers (optional): A map of HTTP header names and values to return in the
     response.
-  * delay (optional): The number of milliseconds to wait before sending the
-    response, which is useful for simulating long-polling by the server.
+  * delay (optional): The number of seconds to wait before sending the response,
+    which is useful for simulating long-polling by the server.
   * body (optional): The body of the response, such as the HTML to render in the
     browser in response to a GET request.
   * body_filename (optional): The filename whose contents should be used as the
@@ -334,7 +334,7 @@ class ScriptParseError(Exception):
     return self._message
 
 
-def script_from_data(script_data, base_dir):
+def script_from_data(script_data, base_dir=None):
   """Returns a Script instance parsed from the given Python objects.
   """
 
