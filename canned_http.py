@@ -280,8 +280,8 @@ class Director:
     self._ready_next_event()
     if self._next_event._type == Director._Event._CONNECTION_CLOSED:
       raise DirectorError(
-          "Client sent request with method '%s' and URL '%s' instead of closing connection %s" %
-          (method, url, self._next_event._connection_index))
+          "Client sent request with method '%s' and URL '%s' instead of closing "
+          "connection %s" % (method, url, self._next_event._connection_index))
 
     exchange = self._next_event._exchange
     request = exchange._request
@@ -361,9 +361,10 @@ def script_from_data(script_data):
         raise ScriptParseError(
             "Missing 'method' key for request in connection %s, exchange %s" % (i, j))
       method_upper = method.upper()
-      if method_upper not in ('GET', 'PUT', 'POST', 'DELETE'):
+      if method_upper not in ('HEAD', 'GET', 'PUT', 'POST', 'DELETE'):
         raise ScriptParseError(
-            "Invalid method '%s' for request in connection %s, exchange %s" % (method, i, j))
+            "Invalid method '%s' for request in connection %s, exchange %s" %
+            (method, i, j))
       # Get the required URL.
       url = request_yaml.get('url', None)
       if not url:
@@ -381,12 +382,14 @@ def script_from_data(script_data):
         status_code = response_yaml.get('status_code', None)
         if not status_code:
           raise ScriptParseError(
-              "Missing 'status_code' key for response in connection %s, exchange %s" % (i, j))
+              "Missing 'status_code' key for response in connection %s, exchange %s" %
+              (i, j))
         # Get the required content type.
         content_type = response_yaml.get('content_type', None)
         if not content_type:
           raise ScriptParseError(
-              "Missing 'content_type' key for response in connection %s, exchange %s" % (i, j))
+              "Missing 'content_type' key for response in connection %s, exchange %s" %
+              (i, j))
         # Get the optional headers and delay.
         headers = response_yaml.get('headers', {})
         delay = response_yaml.get('delay', 0)
@@ -526,6 +529,9 @@ class DirectorRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       self.wfile.write(body)
 
     DirectorRequestHandler._script_done = DirectorRequestHandler._director.is_done()
+
+  def do_HEAD(self):
+    self.handle_request()
 
   def do_GET(self):
     self.handle_request()
