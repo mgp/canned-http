@@ -240,6 +240,8 @@ class TestDirector(unittest.TestCase):
         - - request:
               method: GET
               url: /foo1.html
+              headers:
+                header_name1: header_value1
             response:
               status_code: 200
               content_type: html
@@ -250,17 +252,30 @@ class TestDirector(unittest.TestCase):
     director = canned_http.Director(script)
     director.connection_opened()
     with self.assertRaises(canned_http.DirectorError):
-      director.got_request('PUT', '/foo1.html')
+      director.got_request('PUT', '/foo1.html', {'header_name1': 'header_value1'})
     # Raise an exception if the wrong URL is requested.
     director = canned_http.Director(script)
     director.connection_opened()
     with self.assertRaises(canned_http.DirectorError):
-      director.got_request('GET', '/foo2.html')
+      director.got_request('GET', '/foo2.html', {'header_name1': 'header_value1'})
     # Raise an exception if a body is provided when it should not.
     director = canned_http.Director(script)
     director.connection_opened()
     with self.assertRaises(canned_http.DirectorError):
-      director.got_request('GET', '/foo1.html', body='body')
+      director.got_request(
+          'GET', '/foo1.html', {'header_name1': 'header_value1'}, 'body')
+    # Raise an exception if a wrong header value is provided.
+    director = canned_http.Director(script)
+    director.connection_opened()
+    with self.assertRaises(canned_http.DirectorError):
+      director.got_request(
+          'GET', '/foo1.html', {'header_name1': 'header_value2'}, 'body')
+    # Raise an exception if a wrong header name is provided.
+    director = canned_http.Director(script)
+    director.connection_opened()
+    with self.assertRaises(canned_http.DirectorError):
+      director.got_request(
+          'GET', '/foo1.html', {'header_name2': 'header_value1'}, 'body')
     # Raise an exception if no body is provided when it should be.
     raw_yaml = """
         - - request:
@@ -277,6 +292,36 @@ class TestDirector(unittest.TestCase):
     director.connection_opened()
     with self.assertRaises(canned_http.DirectorError):
       director.got_request('GET', '/foo1.html')
+
+  def test_request_headers(self):
+    raw_yaml = """
+        - - request:
+              method: GET
+              url: /foo1.html
+              headers:
+                header_name1: header_value1
+            response:
+              status_code: 200
+              content_type: html
+              body: body1 
+        """
+    script = canned_http.script_from_yaml_string(raw_yaml)
+    # Capitalization of header names should not matter.
+    director = canned_http.Director(script)
+    director.connection_opened()
+    director.got_request('GET', '/foo1.html', {'HEADER_NAME1': 'header_value1'})
+    director.connection_closed()
+    # Capitalization of header values should matter.
+    director = canned_http.Director(script)
+    director.connection_opened()
+    with self.assertRaises(canned_http.DirectorError):
+      director.got_request('GET', '/foo1.html', {'header_name1': 'HEADER_VALUE1'})
+    # Extra header names should not matter.
+    director = canned_http.Director(script)
+    director.connection_opened()
+    director.got_request('GET', '/foo1.html',
+        {'header_name1': 'header_value1', 'header_name2': 'header_value2'})
+    director.connection_closed()
 
   def _assert_response(self, response, status_code, content_type,
       delay=0, headers={}, body=None, body_filename=None):

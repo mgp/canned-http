@@ -266,8 +266,8 @@ class Director:
           (self._next_event._connection_index, self._next_event._exchange_index))
     self._finish_current_event()
 
-  def _lowercase_headers(self, headers):
-    return dict(((key.lower(), value.lower()) for (key, value) in headers))
+  def _lowercase_header_names(self, headers):
+    return dict(((key.lower(), value) for (key, value) in headers.iteritems()))
 
   def got_request(self, method, url, headers={}, body=None):
     """Called by the web server when the client sends an HTTP request.
@@ -304,16 +304,16 @@ class Director:
           (request._body, body, self._next_event._connection_index,
            self._next_event._exchange_index))
     # Assert that the headers are correct.
-    expected_headers = self._lowercase_headers(request._headers)
+    expected_headers = self._lowercase_header_names(request._headers)
+    headers = self._lowercase_header_names(headers)
     for header_name, expected_header_value in expected_headers.iteritems():
       header_value = headers.get(header_name, None)
-      if header_value:
-        header_value = header_value.lower()
       if expected_header_value != header_value:
         raise DirectorError(
             "Expected value '%s' for header name '%s', "
             "received '%s' for connection %s, exchange %s" %
-            (expected_header_value, header_name, header_value, i, j))
+            (expected_header_value, header_name, header_value,
+             self._next_event._connection_index, self._next_event._exchange_index))
 
     self._finish_current_event()
     return exchange._response
