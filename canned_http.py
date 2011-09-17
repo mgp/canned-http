@@ -8,6 +8,10 @@ For requests, the script specifies the following parameters:
   * url (required): The URL path requested.
   * headers (optional): A map of expected HTTP headers. If provided, the headers
     of a request must be a superset of these headers.
+  * body (optional): The expected body of the request, such as the data
+    submitted in a POST request.
+  * body_filename (optional): The filename whose contents should be expected as
+    the body of the request.
 
 For responses, the script specifies the following parameters:
   * status_code (required): The HTTP status code to return, such as 200 or 404.
@@ -324,7 +328,7 @@ class Director:
     if body != expected_body:
       raise DirectorError(
           "Expected 'body' value '%s', received '%s' for connection %s, exchange %s" %
-          (request._body, body, self._next_event._connection_index,
+          (expected_body, body, self._next_event._connection_index,
            self._next_event._exchange_index))
     # Assert that the headers are correct.
     for header_name, expected_header_value in request._headers.iteritems():
@@ -412,7 +416,7 @@ def script_from_data(script_data, base_dir=None):
         if not os.path.isabs(body_filename):
           body_filename = os.path.normpath(os.path.join(base_dir, body_filename))
         request = Exchange.Request.request_from_file(
-            method, url, body_fiename, headers)
+            method, url, body_filename, headers)
       else:
         # Create a request with no body.
         request = Exchange.Request.request_with_no_body(method, url, headers)
