@@ -4,12 +4,15 @@ import unittest
 import canned_http
 
 class TestParseYaml(unittest.TestCase):
-  def _assert_request(self, exchange, method, url, headers={}, body=None):
+  def _assert_request(self, exchange, method, url, headers={},
+      body=None, body_filename=None, body_type=None):
     request = exchange._request
     self.assertEqual(method, request._method)
     self.assertEqual(url, request._url)
     self.assertDictEqual(headers, request._headers)
     self.assertEqual(body, request._body)
+    self.assertEqual(body_filename, request._body_filename)
+    self.assertEqual(body_type, request._body_type)
 
   def _assert_no_response(self, exchange):
     self.assertIsNone(exchange._response)
@@ -52,6 +55,20 @@ class TestParseYaml(unittest.TestCase):
     raw_yaml = """
         - - request:
               method: GET
+            response:
+              status_code: 200
+              content_type: html
+              body: <html><body></body></html>
+        """
+    with self.assertRaises(canned_http.ScriptParseError):
+      canned_http.script_from_yaml_string(raw_yaml)
+    # Raise exception if body_type is invalid in request.
+    raw_yaml = """
+        - - request:
+              method: POST
+              url: /foo.html
+              body_type: PONY
+              body: [1, 2, 3]
             response:
               status_code: 200
               content_type: html
@@ -124,13 +141,13 @@ class TestParseYaml(unittest.TestCase):
     with self.assertRaises(canned_http.ScriptParseError):
       canned_http.script_from_yaml_string(raw_yaml)
 
-  def test_method_capitalization(self):
-    # Capitalization of method should not matter.
-    method = 'PuT'
+  def test_value_capitalization(self):
     url = '/foo.html'
     status_code = 200
     content_type = 'html'
     response_body = '<html><body></body></html>'
+    # Capitalization of method should not matter.
+    method = 'PuT'
     raw_yaml = """
         - - request:
               method: %s
@@ -146,6 +163,30 @@ class TestParseYaml(unittest.TestCase):
     self.assertEqual(1, len(connection._exchanges))
     exchange = connection._exchanges[0]
     self._assert_request(exchange, method, url)
+    self._assert_response(exchange, status_code, content_type, body=response_body)
+    # Capitalization of the body type should not matter.
+    method = 'POST'
+    body_type = 'JsoN'
+    request_body = '{"abc": [1, 2], "d": {"e": 3}}'
+    raw_yaml = """
+        - - request:
+              method: %s
+              url: %s
+              body: '%s'
+              body_type: %s
+            response:
+              status_code: %s
+              content_type: %s
+              body: %s
+        """ % (method, url, request_body, body_type,
+               status_code, content_type, response_body)
+    script = canned_http.script_from_yaml_string(raw_yaml)
+    self.assertEqual(1, len(script._connections))
+    connection = script._connections[0]
+    self.assertEqual(1, len(connection._exchanges))
+    exchange = connection._exchanges[0]
+    self._assert_request(exchange, method, url,
+        body=request_body, body_type=body_type.lower())
     self._assert_response(exchange, status_code, content_type, body=response_body)
 
   def test_empty_script(self):
@@ -307,6 +348,31 @@ class TestDirector(unittest.TestCase):
     director.connection_opened()
     with self.assertRaises(canned_http.DirectorError):
       director.got_request('GET', '/foo1.html')
+    # Raise an exception if the wrong body is provided.
+    script = canned_http.script_from_yaml_string(raw_yaml)
+    director = canned_http.Director(script)
+    director.connection_opened()
+    with self.assertRaises(canned_http.DirectorError):
+      director.got_request('GET', '/foo1.html', 'body3')
+
+  def test_json_body_type(self):
+    raw_yaml = """
+        - - request:
+              method: GET
+              url: /foo1.html
+              body_type: json
+              body: '{"abc": [1, 2], "d": {"e": 3}}'
+            response:
+              status_code: 200
+              content_type: html
+              body: body1
+        """
+    script = canned_http.script_from_yaml_string(raw_yaml)
+    # Ordering of keys within the JSON string should not matter.
+    director = canned_http.Director(script)
+    director.connection_opened()
+    director.got_request('GET', '/foo1.html', body='{"d": {"e": 3}, "abc": [1, 2]}')
+    director.connection_closed()
 
   def test_request_headers(self):
     raw_yaml = """

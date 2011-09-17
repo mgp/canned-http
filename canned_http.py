@@ -12,6 +12,9 @@ For requests, the script specifies the following parameters:
     submitted in a POST request.
   * body_filename (optional): The filename whose contents should be expected as
     the body of the request.
+  * body_type: (optional): If present, the received body and the expected body
+    will be converted to the given type before returning. Currently the only
+    valid value is JSON.
 
 For responses, the script specifies the following parameters:
   * status_code (required): The HTTP status code to return, such as 200 or 404.
@@ -105,21 +108,24 @@ class Exchange:
       return Exchange.Request(method, url, headers)
 
     @staticmethod
-    def request_with_body(method, url, body, headers=None):
+    def request_with_body(method, url, body, body_type=None, headers=None):
       """Returns a request with the given string as the body."""
-      return Exchange.Request(method, url, headers, body=body)
+      return Exchange.Request(method, url, headers, body=body, body_type=body_type)
 
     @staticmethod
-    def request_from_file(method, url, body_filename, headers=None):
+    def request_from_file(method, url, body_filename, body_type=None, headers=None):
       """Returns a request with the contents of the given file as the body."""
-      return Exchange.Request(method, url, headers, body_filename=body_filename)
+      return Exchange.Request(
+          method, url, headers, body_filename=body_filename, body_type=body_type)
 
-    def __init__(self, method, url, headers=None, body=None, body_filename=None):
+    def __init__(self, method, url, headers=None, body=None, body_filename=None,
+        body_type=None):
       self._method = method
       self._url = url
       self._headers = headers or {}
       self._body = body
       self._body_filename = body_filename
+      self._body_type = body_type
 
     def __repr__(self):
       request_parts = [('method', self._method), ('url', self._url)]
@@ -324,6 +330,12 @@ class Director:
       f.close()
     else:
       expected_body = None
+    if request._body_type == 'json':
+      # Convert the body and expected body to JSON if needed.
+      if body:
+        body = json.loads(body)
+      if expected_body:
+        expected_body = json.loads(expected_body)
     # Assert that the optional body is correct.
     if body != expected_body:
       raise DirectorError(
@@ -403,6 +415,13 @@ def script_from_data(script_data, base_dir=None):
       headers = request_data.get('headers', {})
       body = request_data.get('body', None)
       body_filename = request_data.get('body_filename', None)
+      body_type = request_data.get('body_type', None)
+      if body_type:
+        body_type = body_type.lower()
+        if body_type != 'json':
+          raise ScriptParseError(
+              "Invalid body type '%s' for request in connection %s, exchange %s" %
+              (body_type, i, j))
       # Create the request.
       if body and body_filename:
         raise ScriptParseError(
@@ -410,13 +429,14 @@ def script_from_data(script_data, base_dir=None):
               "connection %s, exchange %s" % (i, j))
       elif body:
         # Create the request with the given body.
-        request = Exchange.Request.request_with_body(method, url, body, headers)
+        request = Exchange.Request.request_with_body(
+            method, url, body, body_type, headers)
       elif body_filename:
         # Create the request with a body from the given filename.
         if not os.path.isabs(body_filename):
           body_filename = os.path.normpath(os.path.join(base_dir, body_filename))
         request = Exchange.Request.request_from_file(
-            method, url, body_filename, headers)
+            method, url, body_filename, body_type, headers)
       else:
         # Create a request with no body.
         request = Exchange.Request.request_with_no_body(method, url, headers)
