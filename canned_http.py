@@ -94,11 +94,28 @@ class Exchange:
     A request must contain a HTTP method and URL. Expected headers and the
     request body, typically only used with POST or PUT, are optional.
     """
-    def __init__(self, method, url, headers=None, body=None):
+
+    @staticmethod
+    def request_with_no_body(method, url, headers=None):
+      """Returns a request with no body, such as for a GET request."""
+      return Exchange.Request(method, url, headers)
+
+    @staticmethod
+    def request_with_body(method, url, body, headers=None):
+      """Returns a request with the given string as the body."""
+      return Exchange.Request(method, url, headers, body=body)
+
+    @staticmethod
+    def request_from_file(method, url, body_filename, headers=None):
+      """Returns a request with the contents of the given file as the body."""
+      return Exchange.Request(method, url, headers, body_filename=body_filename)
+
+    def __init__(self, method, url, headers=None, body=None, body_filename=None):
       self._method = method
       self._url = url
       self._headers = headers or {}
       self._body = body
+      self._body_filename = body_filename
 
     def __repr__(self):
       request_parts = [('method', self._method), ('url', self._url)]
@@ -294,8 +311,17 @@ class Director:
           "Expected 'url' value '%s', received '%s' for connection %s, exchange %s" %
           (request._url, url, self._next_event._connection_index,
            self._next_event._exchange_index))
+    # Create the expected body.
+    if request._body:
+      expected_body = request._body
+    elif request._body_filename:
+      f = open(request._body_filename, 'rb')
+      expected_body = f.read()
+      f.close()
+    else:
+      expected_body = None
     # Assert that the optional body is correct.
-    if body != request._body:
+    if body != expected_body:
       raise DirectorError(
           "Expected 'body' value '%s', received '%s' for connection %s, exchange %s" %
           (request._body, body, self._next_event._connection_index,
@@ -372,8 +398,24 @@ def script_from_data(script_data, base_dir=None):
       # Get the optional headers and body.
       headers = request_data.get('headers', {})
       body = request_data.get('body', None)
+      body_filename = request_data.get('body_filename', None)
       # Create the request.
-      request = Exchange.Request(method, url, headers, body)
+      if body and body_filename:
+        raise ScriptParseError(
+              "Found both 'body' and 'body_filename' keys for request in "
+              "connection %s, exchange %s" % (i, j))
+      elif body:
+        # Create the request with the given body.
+        request = Exchange.Request.request_with_body(method, url, body, headers)
+      elif body_filename:
+        # Create the request with a body from the given filename.
+        if not os.path.isabs(body_filename):
+          body_filename = os.path.normpath(os.path.join(base_dir, body_filename))
+        request = Exchange.Request.request_from_file(
+            method, url, body_fiename, headers)
+      else:
+        # Create a request with no body.
+        request = Exchange.Request.request_with_no_body(method, url, headers)
 
       response_data = exchange_data.get('response', None)
       if response_data:

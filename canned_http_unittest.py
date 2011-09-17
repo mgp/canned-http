@@ -59,6 +59,20 @@ class TestParseYaml(unittest.TestCase):
         """
     with self.assertRaises(canned_http.ScriptParseError):
       canned_http.script_from_yaml_string(raw_yaml)
+    # Raise exception if both and body_filename are present in request.
+    raw_yaml = """
+        - - request:
+              method: POST
+              url: /foo.html
+              body: body
+              body_filename: body_filename
+            response:
+              status_code: 200
+              content_type: html
+              body: <html><body></body></html>
+        """
+    with self.assertRaises(canned_http.ScriptParseError):
+      canned_http.script_from_yaml_string(raw_yaml)
     # Raise exception if status code is missing in response.
     raw_yaml = """
         - - request:
