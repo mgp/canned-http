@@ -57,7 +57,7 @@ Example script
 
 Below I define a script that waits for a client to connect and `GET` the URL
 `/page1.html`. The server waits five seconds, and then responds with a
-`200`' (OK) status code and a simple HTML document that references no
+`200` (OK) status code and a simple HTML document that references no
 additional resources. Browsers then, using the same HTTP connection, request
 the `favicon.ico` file. The server returns the contents of the `favicon.ico`
 file in the same directory as the script. After receiving this file, browsers
@@ -105,3 +105,33 @@ a connection.
         }
       ]
     ]
+
+Running a script
+----------------
+
+The following command line arguments are accepted:
+
+* `port` (optional): The port to run the web server on. The default is 8080.
+* `json_filename` (optional): The filename containing a script in JSON format.
+* `yaml_filename` (optional): The filename containing a script in YAML format.
+
+Exactly one of `json_filename` and `yaml_filename` must be set. Setting both
+or neither is invalid.
+
+To run a script in YAML format or to run the unit tests successfully,
+[LibYaml](http://pyyaml.org/wiki/LibYAML) must be installed. If missing, simply
+define scripts in JSON format.
+
+Reading the output
+------------------
+
+The script shown above is found under `/examples/ex1.yaml` and `/examples/ex1.json`.
+If the user tries to access `/page2.html` instead of `/page1.html` in a browser,
+the following output is shown:
+
+    mgp:~/canned-http $ python canned_http.py --yaml_filename=examples/ex1.yaml 
+    ERROR:  Expected 'url' value '/page1.html', received '/page2.html' for connection 1, exchange 1
+    mgp:~/canned-http $
+
+The script expected the client to request `page1.html` for the first exchange
+of the first connection, but instead the client requested `page2.html`.
